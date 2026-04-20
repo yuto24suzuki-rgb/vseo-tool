@@ -28,7 +28,12 @@ router.get('/analyze', async (req: Request, res: Response) => {
     send('keywords_generated', { count: keywords.length });
 
     send('progress', { step: 2, total: 3, message: 'Google Ads APIで検索ボリュームと競合度を取得中...' });
-    const metricsData = await getKeywordMetrics(keywords);
+    const { metrics: metricsData, error: adsError } = await getKeywordMetrics(keywords);
+    if (adsError) {
+      send('ads_warning', {
+        message: `Google Ads API エラー: ${adsError} 検索データなしで分析を続行します。`,
+      });
+    }
 
     send('progress', { step: 3, total: 3, message: 'Claude AIがキーワードを分析・分類中...' });
     const analysis = await analyzeKeywords(theme.trim(), metricsData);

@@ -76,42 +76,75 @@ function isGoogleAdsConfigured(): boolean {
   );
 }
 
-export async function getKeywordMetrics(keywords: string[]): Promise<KeywordMetrics[]> {
+export interface MetricsResult {
+  metrics: KeywordMetrics[];
+  error?: string;
+}
+
+function fallbackMetrics(keywords: string[]): KeywordMetrics[] {
+  return keywords.map((keyword) => ({
+    keyword,
+    avgMonthlySearches: 0,
+    competition: 'UNKNOWN' as const,
+    competitionIndex: 0,
+  }));
+}
+
+export async function getKeywordMetrics(keywords: string[]): Promise<MetricsResult> {
   if (!isGoogleAdsConfigured()) {
     console.warn('Google Ads API not configured — returning UNKNOWN metrics');
-    return keywords.map((keyword) => ({
-      keyword,
-      avgMonthlySearches: 0,
-      competition: 'UNKNOWN',
-      competitionIndex: 0,
-    }));
+    return { metrics: fallbackMetrics(keywords) };
   }
 
-  const accessToken = await getAccessToken();
-  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, '');
+  try {
+    const accessToken = await getAccessToken();
+    const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, '');
 
-  const BATCH_SIZE = 50;
-  const batches: string[][] = [];
-  for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
-    batches.push(keywords.slice(i, i + BATCH_SIZE));
-  }
+    const BATCH_SIZE = 50;
+    const batches: string[][] = [];
+    for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+      batches.push(keywords.slice(i, i + BATCH_SIZE));
+    }
 
-  const batchResults = await Promise.all(
-    batches.map((batch) => fetchMetricsBatch(batch, accessToken, customerId))
-  );
+    const settled = await Promise.allSettled(
+      batches.map((batch) => fetchMetricsBatch(batch, accessToken, customerId))
+    );
 
-  const resultMap = new Map<string, KeywordMetrics>();
-  for (const result of batchResults.flat()) {
-    resultMap.set(result.keyword, result);
-  }
-
-  return keywords.map(
-    (keyword) =>
-      resultMap.get(keyword) ?? {
-        keyword,
-        avgMonthlySearches: 0,
-        competition: 'UNKNOWN',
-        competitionIndex: 0,
+    const resultMap = new Map<string, KeywordMetrics>();
+    let failedBatches = 0;
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        for (const m of result.value) resultMap.set(m.keyword, m);
+      } else {
+        failedBatches++;
+        console.error('Google Ads batch error:', result.reason);
       }
-  );
+    }
+
+    if (failedBatches === batches.length) {
+      throw new Error('全バッチの取得に失敗しました');
+    }
+
+    const metrics = keywords.map(
+      (keyword) =>
+        resultMap.get(keyword) ?? {
+          keyword,
+          avgMonthlySearches: 0,
+          competition: 'UNKNOWN' as const,
+          competitionIndex: 0,
+        }
+    );
+
+    const partialError =
+      failedBatches > 0
+        ? `${failedBatches}/${batches.length} バッチが失敗しました。一部のキーワードはUNKNOWNになります。`
+        : undefined;
+
+    return { metrics, error: partialError };
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Google Ads API で不明なエラーが発生しました';
+    console.error('Google Ads API failed:', message);
+    return { metrics: fallbackMetrics(keywords), error: message };
+  }
 }

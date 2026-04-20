@@ -6,6 +6,7 @@ import type { AnalysisResult, KeywordAnalysis } from '../types/keyword';
 interface KeywordResultsProps {
   result: AnalysisResult;
   onReset: () => void;
+  adsWarning?: string;
 }
 
 const competitionLabel: Record<string, { label: string; color: string }> = {
@@ -134,7 +135,7 @@ function exportCSV(result: AnalysisResult) {
   URL.revokeObjectURL(url);
 }
 
-export default function KeywordResults({ result, onReset }: KeywordResultsProps) {
+export default function KeywordResults({ result, onReset, adsWarning }: KeywordResultsProps) {
   const [showSkip, setShowSkip] = useState(false);
   const sortedTarget = [...result.targetKeywords].sort((a, b) => {
     const order = { high: 0, medium: 1, low: 2 };
@@ -164,6 +165,17 @@ export default function KeywordResults({ result, onReset }: KeywordResultsProps)
           </button>
         </div>
       </div>
+
+      {/* Google Ads warning banner */}
+      {adsWarning && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-5 py-3 text-sm text-yellow-800 flex items-start gap-2">
+          <span className="mt-0.5 shrink-0">⚠</span>
+          <span>
+            <span className="font-semibold">Google Ads API エラー:</span> {adsWarning}
+            　検索ボリューム・競合度は取得できませんでしたが、Claude AI による分析は完了しています。
+          </span>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-6">

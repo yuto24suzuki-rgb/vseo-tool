@@ -5,6 +5,7 @@ import type { ProgressState } from '../types/keyword';
 interface LoadingStateProps {
   progress: ProgressState | null;
   keywordCount?: number;
+  adsWarning?: string;
 }
 
 const STEPS = [
@@ -13,7 +14,7 @@ const STEPS = [
   { icon: '🎯', label: 'キーワードを分析・分類' },
 ];
 
-export default function LoadingState({ progress, keywordCount }: LoadingStateProps) {
+export default function LoadingState({ progress, keywordCount, adsWarning }: LoadingStateProps) {
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
       <div className="flex flex-col items-center gap-6">
@@ -72,9 +73,15 @@ export default function LoadingState({ progress, keywordCount }: LoadingStatePro
           })}
         </div>
 
-        <p className="text-xs text-gray-400 text-center">
-          Claude AI + Google Ads API を使用中。通常30〜60秒かかります。
-        </p>
+        {adsWarning ? (
+          <div className="w-full bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-xs text-yellow-800">
+            <span className="font-semibold">⚠ Google Ads API:</span> {adsWarning}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center">
+            Claude AI + Google Ads API を使用中。通常30〜60秒かかります。
+          </p>
+        )}
       </div>
     </div>
   );

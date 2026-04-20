@@ -16,16 +16,20 @@ export default function Home() {
   const [keywordCount, setKeywordCount] = useState<number | undefined>(undefined);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [adsWarning, setAdsWarning] = useState('');
   const esRef = useRef<EventSource | null>(null);
+  const stateRef = useRef<AppState>('idle');
 
   const handleSubmit = (theme: string) => {
     if (esRef.current) esRef.current.close();
 
+    stateRef.current = 'loading';
     setState('loading');
     setProgress(null);
     setKeywordCount(undefined);
     setResult(null);
     setErrorMsg('');
+    setAdsWarning('');
 
     const url = `${API_URL}/api/keywords/analyze?theme=${encodeURIComponent(theme)}`;
     const es = new EventSource(url);
@@ -41,9 +45,15 @@ export default function Home() {
       setKeywordCount(data.count);
     });
 
+    es.addEventListener('ads_warning', (e) => {
+      const data = JSON.parse(e.data) as { message: string };
+      setAdsWarning(data.message);
+    });
+
     es.addEventListener('complete', (e) => {
       const data = JSON.parse(e.data) as { result: AnalysisResult };
       setResult(data.result);
+      stateRef.current = 'done';
       setState('done');
       es.close();
     });
@@ -55,13 +65,15 @@ export default function Home() {
       } catch {
         setErrorMsg('予期しないエラーが発生しました');
       }
+      stateRef.current = 'error';
       setState('error');
       es.close();
     });
 
     es.onerror = () => {
-      if (state !== 'done' && state !== 'error') {
+      if (stateRef.current !== 'done' && stateRef.current !== 'error') {
         setErrorMsg('サーバーとの接続が切れました。バックエンドが起動しているか確認してください。');
+        stateRef.current = 'error';
         setState('error');
         es.close();
       }
@@ -70,11 +82,13 @@ export default function Home() {
 
   const handleReset = () => {
     if (esRef.current) esRef.current.close();
+    stateRef.current = 'idle';
     setState('idle');
     setProgress(null);
     setKeywordCount(undefined);
     setResult(null);
     setErrorMsg('');
+    setAdsWarning('');
   };
 
   return (
@@ -100,7 +114,7 @@ export default function Home() {
 
         {/* Loading */}
         {state === 'loading' && (
-          <LoadingState progress={progress} keywordCount={keywordCount} />
+          <LoadingState progress={progress} keywordCount={keywordCount} adsWarning={adsWarning} />
         )}
 
         {/* Error */}
@@ -119,7 +133,7 @@ export default function Home() {
 
         {/* Results */}
         {state === 'done' && result && (
-          <KeywordResults result={result} onReset={handleReset} />
+          <KeywordResults result={result} onReset={handleReset} adsWarning={adsWarning} />
         )}
 
         {/* Hero info (only on idle) */}
