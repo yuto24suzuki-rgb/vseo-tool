@@ -14,10 +14,101 @@ function extractJSON(text: string): string {
   return array?.[0] ?? object?.[0] ?? text;
 }
 
+/**
+ * Repairs truncated JSON by:
+ * 1. Tracking nesting depth and the last "safe cut" point (after each complete element)
+ * 2. Trimming to the last complete element and closing all open structures
+ */
+function repairJSON(raw: string): string {
+  let inString = false;
+  let escaped = false;
+  const stack: string[] = [];
+  let lastSafeCut = -1;
+  // Snapshot of the stack AT the safe cut point (not the final state)
+  let stackAtCut: string[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === '\\' && inString) { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (c === '[' || c === '{') {
+      stack.push(c === '[' ? ']' : '}');
+    } else if ((c === ']' || c === '}') && stack.length > 0) {
+      stack.pop();
+      // Closing a top-level element (back to depth 0 or 1) is a safe cut point
+      if (stack.length <= 1) {
+        lastSafeCut = i + 1;
+        stackAtCut = [...stack];
+      }
+    } else if (c === ',' && stack.length > 0) {
+      // Comma between elements — everything before this comma is complete
+      lastSafeCut = i;
+      stackAtCut = [...stack];
+    }
+  }
+
+  if (stack.length === 0 && !inString) return raw; // already valid
+
+  if (lastSafeCut === -1) {
+    // No complete elements found — return an empty collection
+    const first = raw.trimStart()[0];
+    return first === '[' ? '[]' : '{}';
+  }
+
+  // Use the stack state AT the cut point, not the final (potentially deeper) state
+  const closing = stackAtCut.slice().reverse().join('');
+  return raw.slice(0, lastSafeCut) + closing;
+}
+
+function safeParseJSON<T>(text: string): T {
+  const jsonStr = extractJSON(text);
+
+  // 1st attempt: direct parse
+  try {
+    return JSON.parse(jsonStr) as T;
+  } catch (e1) {
+    console.warn('JSON parse failed, attempting repair:', (e1 as Error).message);
+  }
+
+  // 2nd attempt: repair then parse
+  const repaired = repairJSON(jsonStr);
+  try {
+    const result = JSON.parse(repaired) as T;
+    console.info('JSON repaired successfully');
+    return result;
+  } catch (e2) {
+    throw new Error(
+      `JSONパース失敗: ${(e2 as Error).message} ` +
+        `| 元テキスト冒頭: ${text.substring(0, 200)}`
+    );
+  }
+}
+
+/** Extract raw quoted strings as last-resort fallback for keyword arrays */
+function extractStringsFromText(text: string): string[] {
+  const matches = [...text.matchAll(/"((?:[^"\\]|\\.)*)"/g)];
+  return matches
+    .map((m) => m[1])
+    .filter((s) => s.length > 1 && !s.startsWith('{')); // skip JSON keys
+}
+
+function isValidKeywordItem(item: unknown): item is KeywordAnalysis {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'keyword' in item &&
+    typeof (item as Record<string, unknown>).keyword === 'string' &&
+    'reason' in item
+  );
+}
+
 export async function generateKeywordCandidates(theme: string): Promise<string[]> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [
       {
         role: 'user',
@@ -40,11 +131,26 @@ JSONの配列形式のみで回答してください（説明文不要）：
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonStr = extractJSON(text);
-  const keywords: unknown = JSON.parse(jsonStr);
-  if (!Array.isArray(keywords)) throw new Error('Claude からキーワード配列を取得できませんでした');
-  return (keywords as unknown[])
-    .filter((k): k is string => typeof k === 'string' && k.trim().length > 0);
+
+  try {
+    const parsed = safeParseJSON<unknown>(text);
+    if (Array.isArray(parsed)) {
+      const keywords = (parsed as unknown[]).filter(
+        (k): k is string => typeof k === 'string' && k.trim().length > 0
+      );
+      if (keywords.length > 0) return keywords;
+    }
+  } catch (err) {
+    console.warn('safeParseJSON failed for keywords, falling back to regex:', err);
+  }
+
+  // Last-resort: extract quoted strings from the raw text
+  const fallback = extractStringsFromText(text).filter((s) => s.length >= 2);
+  if (fallback.length === 0) {
+    throw new Error('Claude からキーワードを抽出できませんでした');
+  }
+  console.warn(`Regex fallback extracted ${fallback.length} keywords`);
+  return fallback;
 }
 
 export async function analyzeKeywords(
@@ -64,7 +170,7 @@ export async function analyzeKeywords(
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 16384,
     messages: [
       {
         role: 'user',
@@ -92,6 +198,8 @@ ${metricsJson}
 - medium: 積極的に取り組む価値があるキーワード
 - low: 余裕があれば取り組むキーワード
 
+【重要】各フィールドは必ず簡潔に（reason・intentは1文以内）。
+
 JSONのみで回答してください（説明文不要）：
 {
   "targetKeywords": [
@@ -99,41 +207,61 @@ JSONのみで回答してください（説明文不要）：
       "keyword": "キーワード",
       "classification": "target",
       "priority": "high|medium|low",
-      "intent": "ユーザーが求めているもの（1行）",
-      "reason": "このキーワードを狙うべき理由（2〜3文）"
+      "intent": "ユーザー意図（15字以内）",
+      "reason": "狙う理由（1文）"
     }
   ],
   "skipKeywords": [
     {
       "keyword": "キーワード",
       "classification": "skip",
-      "reason": "見送る理由（1〜2文）"
+      "reason": "見送り理由（1文）"
     }
   ],
-  "summary": "全体分析と戦略提案（3〜5文）"
+  "summary": "全体戦略（2〜3文）"
 }`,
       },
     ],
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonStr = extractJSON(text);
-  const parsed = JSON.parse(jsonStr) as {
-    targetKeywords: KeywordAnalysis[];
-    skipKeywords: KeywordAnalysis[];
-    summary: string;
+
+  let parsed: {
+    targetKeywords?: unknown[];
+    skipKeywords?: unknown[];
+    summary?: string;
   };
+
+  try {
+    parsed = safeParseJSON<typeof parsed>(text);
+  } catch (err) {
+    console.error('analyzeKeywords JSON parse failed even after repair:', err);
+    // Return a minimal valid result so the app does not crash
+    parsed = { targetKeywords: [], skipKeywords: [], summary: '' };
+  }
 
   const metricsMap = new Map(keywordsWithMetrics.map((m) => [m.keyword, m]));
 
-  const enrichAnalysis = (items: KeywordAnalysis[]): KeywordAnalysis[] =>
-    items.map((item) => ({ ...item, metrics: metricsMap.get(item.keyword) }));
+  const enrichAnalysis = (items: unknown[]): KeywordAnalysis[] =>
+    items
+      .filter(isValidKeywordItem)
+      .map((item) => ({ ...item, metrics: metricsMap.get(item.keyword) }));
+
+  const targetKeywords = enrichAnalysis(parsed.targetKeywords ?? []);
+  const skipKeywords = enrichAnalysis(parsed.skipKeywords ?? []);
+
+  // Surface a warning in the summary if we got very few results (likely truncation)
+  const totalClassified = targetKeywords.length + skipKeywords.length;
+  const summaryNote =
+    totalClassified < keywordsWithMetrics.length * 0.5
+      ? `（注: レスポンスが途中で切れたため、${totalClassified}件のみ分類できました） `
+      : '';
 
   return {
     theme,
-    targetKeywords: enrichAnalysis(parsed.targetKeywords ?? []),
-    skipKeywords: enrichAnalysis(parsed.skipKeywords ?? []),
-    summary: parsed.summary ?? '',
+    targetKeywords,
+    skipKeywords,
+    summary: summaryNote + (parsed.summary ?? ''),
     generatedAt: new Date().toISOString(),
   };
 }
