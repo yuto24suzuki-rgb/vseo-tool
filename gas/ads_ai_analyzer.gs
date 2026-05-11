@@ -529,6 +529,16 @@ function appendToSummary(summarySheet, title, period, columnNames, row, judgment
     return idx !== -1 ? row[idx] : "";
   };
 
+  // スプレッドシートが小数で保持するパーセント列を実際の%値に変換
+  // 例: 0.0031 → 0.31（CTR）、0.15 → 15（完了率）
+  const getPercent = (colName) => {
+    const val = get(colName);
+    if (typeof val === "number" && val > 0 && val < 1) {
+      return Math.round(val * 10000) / 100;
+    }
+    return val;
+  };
+
   const confidenceMatch = judgment.match(/【確信度】(高|中|低)/);
   const confidence      = confidenceMatch ? confidenceMatch[1] : "不明";
   const labelMatch      = judgment.match(/【判断】(継続|設定変更して継続|停止)/);
@@ -536,8 +546,8 @@ function appendToSummary(summarySheet, title, period, columnNames, row, judgment
 
   const newRow = [
     new Date(), period, title,
-    get("クリック率"), get("CV率"), get("CV単価"),
-    get("動画再生時間の割合_100%"),
+    getPercent("クリック率"), getPercent("CV率"), get("CV単価"),
+    getPercent("動画再生時間の割合_100%"),
     get("CV数（ch登録）"), get("広告視聴後の動画視聴"), get("費用"),
     label, confidence,
   ];
