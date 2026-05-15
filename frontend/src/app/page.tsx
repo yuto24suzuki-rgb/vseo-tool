@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import KeywordForm from '../components/KeywordForm';
 import LoadingState from '../components/LoadingState';
 import KeywordResults from '../components/KeywordResults';
@@ -89,6 +90,12 @@ export default function Home() {
               AI × Google Ads で「勝てるキーワード」を自動提案
             </p>
           </div>
+          <Link
+            href="/lstep"
+            className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            Lステップ URL発行へ
+          </Link>
         </div>
       </header>
 

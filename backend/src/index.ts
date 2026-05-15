@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import keywordsRouter from './routes/keywords';
+import lstepRouter from './routes/lstep';
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ app.use(
 app.use(express.json());
 
 app.use('/api/keywords', keywordsRouter);
+app.use('/api/lstep', lstepRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
