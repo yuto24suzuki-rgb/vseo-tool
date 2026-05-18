@@ -3,12 +3,16 @@ import {
   getVideoMetrics,
   getTrafficSources,
   getGeographyMetrics,
+  getMilestoneMetrics,
+  detectViralVideos,
 } from './youtubeAnalyticsService';
 import {
   writeChannelDailyMetrics,
   writeVideoMetrics,
   writeTrafficSources,
   writeGeography,
+  writeMilestoneMetrics,
+  writeSpecialNotes,
 } from './googleSheetsService';
 
 export interface SyncResult {
@@ -31,6 +35,16 @@ export async function runAnalyticsSync(): Promise<SyncResult> {
     const videos = await getVideoMetrics();
     await writeVideoMetrics(videos);
     completedSheets.push('動画別パフォーマンス');
+
+    console.log('[analytics] Fetching milestone metrics (per-video daily queries)...');
+    const milestones = await getMilestoneMetrics(videos);
+    await writeMilestoneMetrics(milestones);
+    completedSheets.push('動画マイルストーン');
+
+    console.log('[analytics] Detecting viral / sudden-reach videos...');
+    const viral = await detectViralVideos();
+    await writeSpecialNotes(viral);
+    completedSheets.push('特記事項（急伸検知）');
 
     console.log('[analytics] Fetching traffic sources...');
     const traffic = await getTrafficSources();

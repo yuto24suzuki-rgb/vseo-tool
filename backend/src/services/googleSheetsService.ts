@@ -4,6 +4,8 @@ import type {
   VideoMetrics,
   TrafficSourceMetrics,
   GeographyMetrics,
+  MilestoneMetrics,
+  ViralVideo,
 } from './youtubeAnalyticsService';
 
 type CellValue = string | number;
@@ -172,4 +174,70 @@ export async function writeGeography(metrics: GeographyMetrics[]): Promise<void>
     totalViews > 0 ? pct((m.views / totalViews) * 100) : 0,
   ]);
   await writeSheet(sheets, '視聴者の地域', [headers, ...rows]);
+}
+
+export async function writeMilestoneMetrics(metrics: MilestoneMetrics[]): Promise<void> {
+  const sheets = createSheets();
+  const dash = '—';
+  const headers: CellValue[] = [
+    '動画ID',
+    'タイトル',
+    '公開日',
+    '24h_視聴回数',
+    '24h_視聴時間(分)',
+    '24h_平均視聴率(%)',
+    '3日_視聴回数',
+    '3日_視聴時間(分)',
+    '3日_平均視聴率(%)',
+    '1週間_視聴回数',
+    '1週間_視聴時間(分)',
+    '1週間_平均視聴率(%)',
+  ];
+  const rows: CellValue[][] = metrics.map((m) => [
+    m.videoId,
+    m.title,
+    m.publishedAt,
+    m.h24?.views              ?? dash,
+    m.h24?.estimatedMinutesWatched ?? dash,
+    m.h24?.averageViewPercentage   ?? dash,
+    m.d3?.views               ?? dash,
+    m.d3?.estimatedMinutesWatched  ?? dash,
+    m.d3?.averageViewPercentage    ?? dash,
+    m.d7?.views               ?? dash,
+    m.d7?.estimatedMinutesWatched  ?? dash,
+    m.d7?.averageViewPercentage    ?? dash,
+  ]);
+  await writeSheet(sheets, '動画マイルストーン', [headers, ...rows]);
+}
+
+export async function writeSpecialNotes(viral: ViralVideo[]): Promise<void> {
+  const sheets = createSheets();
+  const updatedAt = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
+  const headers: CellValue[] = [
+    '検知日',
+    '動画ID',
+    'タイトル',
+    '公開日',
+    '前7日_視聴回数',
+    '直近7日_視聴回数',
+    '伸び率(倍)',
+    '備考',
+  ];
+
+  const rows: CellValue[][] =
+    viral.length === 0
+      ? [['—', '—', `急伸動画は検出されませんでした（更新: ${updatedAt}）`, '', '', '', '', '']]
+      : viral.map((v) => [
+          v.detectedAt,
+          v.videoId,
+          v.title,
+          v.publishedAt,
+          v.prev7dViews,
+          v.last7dViews,
+          v.growthRatio,
+          v.note,
+        ]);
+
+  await writeSheet(sheets, '特記事項（急伸検知）', [headers, ...rows]);
 }
