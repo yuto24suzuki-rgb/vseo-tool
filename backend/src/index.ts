@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import keywordsRouter from './routes/keywords';
+import analyticsRouter from './routes/analytics';
+import { startAnalyticsCronJob } from './jobs/analyticsCron';
 
 dotenv.config();
 
@@ -17,6 +19,7 @@ app.use(
 app.use(express.json());
 
 app.use('/api/keywords', keywordsRouter);
+app.use('/api/analytics', analyticsRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -30,6 +33,7 @@ app.listen(PORT, () => {
   if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
     console.warn('WARNING: Google Ads API not configured — metrics will show as UNKNOWN');
   }
+  startAnalyticsCronJob();
 });
 
 export default app;
