@@ -1,16 +1,32 @@
 # YouTube VSEOキーワード提案ツール
 
-チャンネルのメインテーマを入力するだけで、**Claude AI × Google Ads API** が「勝てるキーワード」を自動提案するWebアプリです。
+チャンネルのメインテーマを入力するだけで、**Claude AI × Google Ads API × vidIQ** が「勝てるキーワード」を自動提案するWebアプリです。
 
 ## 処理フロー
 
 ```
 テーマ入力
   → Claude AI がキーワード候補を100件生成
+      （vidIQ 連携時: vidIQ の YouTube 実データを参照して生成）
   → Google Ads API で月間検索ボリューム・競合度を取得
   → Claude AI が分析・分類（狙うべきワード / 見送るワード）
+      （vidIQ 連携時: YouTube 上の検索ボリューム・競合度も加味）
   → 結果表示 + CSVエクスポート
 ```
+
+## vidIQ 連携（オプション）
+
+Claude API の [MCP コネクタ](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) 経由で [vidIQ 公式 MCP サーバー](https://vidiq.com/mcp/)（`https://mcp.vidiq.com/mcp`）に接続します。連携すると、Claude がキーワード生成・分析の際に vidIQ の YouTube 実データ（検索ボリューム・競合度・関連キーワード）をツールとして直接参照できるようになります。
+
+1. [app.vidiq.com/account/settings/mcp](https://app.vidiq.com/account/settings/mcp) で vidIQ の MCP API キーを発行
+   （vidIQ の MCP 利用には対応プランへの加入が必要です。キーはいつでも失効・再発行できます）
+2. `backend/.env` に追加：
+
+   ```env
+   VIDIQ_MCP_API_KEY=vidiq_...
+   ```
+
+`VIDIQ_MCP_API_KEY` が未設定の場合は、従来どおり Claude + Google Ads API のみで動作します。
 
 ## プロジェクト構成
 
@@ -96,6 +112,7 @@ cd frontend && npm run dev
 | `GOOGLE_ADS_CLIENT_SECRET` | OAuth2 クライアントシークレット | 推奨 |
 | `GOOGLE_ADS_REFRESH_TOKEN` | OAuth2 リフレッシュトークン | 推奨 |
 | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads 顧客 ID（ハイフンあり可） | 推奨 |
+| `VIDIQ_MCP_API_KEY` | vidIQ MCP API キー（YouTube 実データ連携） | 任意 |
 
 ## Google Ads API のセットアップ
 
@@ -120,6 +137,6 @@ Server-Sent Events（SSE）ストリームを返します。
 
 - **フロントエンド:** Next.js 14, TypeScript, Tailwind CSS
 - **バックエンド:** Node.js, Express, TypeScript, tsx
-- **AI:** Anthropic Claude (claude-sonnet-4-6)
-- **データ:** Google Ads API v18 (Keyword Planner)
+- **AI:** Anthropic Claude (claude-sonnet-4-6) + MCP コネクタ
+- **データ:** Google Ads API v18 (Keyword Planner), vidIQ MCP サーバー（オプション）
 - **リアルタイム通信:** Server-Sent Events (SSE)

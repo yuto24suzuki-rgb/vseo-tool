@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { generateKeywordCandidates, analyzeKeywords } from '../services/claudeService';
+import { generateKeywordCandidates, analyzeKeywords, isVidiqConfigured } from '../services/claudeService';
 import { getKeywordMetrics } from '../services/googleAdsService';
 
 const router = Router();
@@ -23,14 +23,27 @@ router.get('/analyze', async (req: Request, res: Response) => {
   };
 
   try {
-    send('progress', { step: 1, total: 3, message: 'Claude AIがキーワード候補を生成中...' });
+    const withVidiq = isVidiqConfigured();
+    send('progress', {
+      step: 1,
+      total: 3,
+      message: withVidiq
+        ? 'Claude AIがvidIQのYouTubeデータを参照してキーワード候補を生成中...'
+        : 'Claude AIがキーワード候補を生成中...',
+    });
     const keywords = await generateKeywordCandidates(theme.trim());
     send('keywords_generated', { count: keywords.length });
 
     send('progress', { step: 2, total: 3, message: 'Google Ads APIで検索ボリュームと競合度を取得中...' });
     const metricsData = await getKeywordMetrics(keywords);
 
-    send('progress', { step: 3, total: 3, message: 'Claude AIがキーワードを分析・分類中...' });
+    send('progress', {
+      step: 3,
+      total: 3,
+      message: withVidiq
+        ? 'Claude AIがvidIQデータを併用してキーワードを分析・分類中...'
+        : 'Claude AIがキーワードを分析・分類中...',
+    });
     const analysis = await analyzeKeywords(theme.trim(), metricsData);
 
     send('complete', { result: analysis });

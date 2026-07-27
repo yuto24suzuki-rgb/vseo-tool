@@ -1,7 +1,78 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type {
+  BetaContentBlock,
+  BetaMessageParam,
+  BetaRequestMCPServerURLDefinition,
+  BetaToolUnion,
+} from '@anthropic-ai/sdk/resources/beta/messages';
 import type { KeywordMetrics, KeywordAnalysis, AnalysisResult } from '../types/keyword';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const MODEL = 'claude-sonnet-4-6';
+const VIDIQ_MCP_URL = 'https://mcp.vidiq.com/mcp';
+const MCP_BETA = 'mcp-client-2025-11-20';
+
+export function isVidiqConfigured(): boolean {
+  return !!process.env.VIDIQ_MCP_API_KEY;
+}
+
+function vidiqMcpServers(): BetaRequestMCPServerURLDefinition[] {
+  return [
+    {
+      type: 'url',
+      name: 'vidiq',
+      url: VIDIQ_MCP_URL,
+      authorization_token: process.env.VIDIQ_MCP_API_KEY!,
+    },
+  ];
+}
+
+const vidiqToolset: BetaToolUnion[] = [{ type: 'mcp_toolset', mcp_server_name: 'vidiq' }];
+
+/**
+ * vidIQ MCP が有効ならツール付き(Claude が YouTube 実データを参照できる)、
+ * 無効なら通常の Messages API で呼び出す。
+ * サーバーサイドツールのループ上限で stop_reason が pause_turn になった場合は再送して継続する。
+ */
+async function createMessage(prompt: string, maxTokens: number): Promise<string> {
+  if (!isVidiqConfigured()) {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+  }
+
+  const messages: BetaMessageParam[] = [{ role: 'user', content: prompt }];
+  const MAX_CONTINUATIONS = 5;
+
+  for (let attempt = 0; ; attempt++) {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: maxTokens,
+      betas: [MCP_BETA],
+      mcp_servers: vidiqMcpServers(),
+      tools: vidiqToolset,
+      messages,
+    });
+
+    if (response.stop_reason === 'pause_turn' && attempt < MAX_CONTINUATIONS) {
+      messages.push({ role: 'assistant', content: response.content });
+      continue;
+    }
+
+    const textBlocks = response.content.filter(
+      (b): b is Extract<BetaContentBlock, { type: 'text' }> => b.type === 'text'
+    );
+    // MCP ツール使用時はテキストブロックが複数になり得るため、最終ブロック(結論)を優先する
+    return textBlocks.length > 0 ? textBlocks[textBlocks.length - 1].text : '';
+  }
+}
 
 function extractJSON(text: string): string {
   const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -15,14 +86,15 @@ function extractJSON(text: string): string {
 }
 
 export async function generateKeywordCandidates(theme: string): Promise<string[]> {
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `YouTubeチャンネルのテーマ「${theme}」について、SEOキーワード候補を100件生成してください。
+  const vidiqInstruction = isVidiqConfigured()
+    ? `
+vidIQ のツールが利用できます。まず vidIQ のキーワードリサーチツールで「${theme}」の関連キーワード・検索ボリューム・競合度を調査し、実際に YouTube で検索されているキーワードを候補に反映してください。
+`
+    : '';
 
+  const text = await createMessage(
+    `YouTubeチャンネルのテーマ「${theme}」について、SEOキーワード候補を100件生成してください。
+${vidiqInstruction}
 以下の多様な視点からキーワードを生成してください：
 - ショートテール（1〜2語）: 10件程度
 - ミドルテール（2〜3語）: 40件程度
@@ -33,13 +105,11 @@ export async function generateKeywordCandidates(theme: string): Promise<string[]
 
 実際にYouTubeや検索エンジンで検索されそうな、自然な日本語キーワードを生成してください。
 
-JSONの配列形式のみで回答してください（説明文不要）：
+最終回答はJSONの配列形式のみで出力してください（説明文不要）：
 ["キーワード1", "キーワード2", ...]`,
-      },
-    ],
-  });
+    8192
+  );
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonStr = extractJSON(text);
   const keywords: unknown = JSON.parse(jsonStr);
   if (!Array.isArray(keywords)) throw new Error('Claude からキーワード配列を取得できませんでした');
@@ -62,17 +132,19 @@ export async function analyzeKeywords(
     2
   );
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
-    messages: [
-      {
-        role: 'user',
-        content: `YouTubeチャンネルのテーマ「${theme}」について、以下のキーワードデータを分析してください。
+  const vidiqInstruction = isVidiqConfigured()
+    ? `
+## vidIQ データの活用
+vidIQ のツールが利用できます。特に有望そうなキーワードや Google Ads のデータが UNKNOWN のキーワードについては、vidIQ で YouTube 上の検索ボリューム・競合度・スコアを確認し、YouTube 実データに基づいて判断してください（Google 検索と YouTube 検索では傾向が異なります）。
+`
+    : '';
+
+  const text = await createMessage(
+    `YouTubeチャンネルのテーマ「${theme}」について、以下のキーワードデータを分析してください。
 
 ## キーワードデータ（月間検索ボリューム・競合度付き）
 ${metricsJson}
-
+${vidiqInstruction}
 ## 分析基準
 
 ### 狙うべきワード（target）
@@ -92,7 +164,7 @@ ${metricsJson}
 - medium: 積極的に取り組む価値があるキーワード
 - low: 余裕があれば取り組むキーワード
 
-JSONのみで回答してください（説明文不要）：
+最終回答はJSONのみで出力してください（説明文不要）：
 {
   "targetKeywords": [
     {
@@ -112,11 +184,9 @@ JSONのみで回答してください（説明文不要）：
   ],
   "summary": "全体分析と戦略提案（3〜5文）"
 }`,
-      },
-    ],
-  });
+    8192
+  );
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonStr = extractJSON(text);
   const parsed = JSON.parse(jsonStr) as {
     targetKeywords: KeywordAnalysis[];
