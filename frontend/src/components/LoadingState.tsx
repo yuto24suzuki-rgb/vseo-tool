@@ -10,6 +10,7 @@ interface LoadingStateProps {
 const STEPS = [
   { icon: '🤖', label: 'キーワード候補を生成' },
   { icon: '📊', label: '検索ボリュームを取得' },
+  { icon: '📈', label: 'vidIQデータを取得' },
   { icon: '🎯', label: 'キーワードを分析・分類' },
 ];
 
@@ -66,14 +67,14 @@ export default function LoadingState({ progress, keywordCount }: LoadingStatePro
                     </span>
                   )}
                 </span>
-                <span className="ml-auto text-xs text-gray-400">{stepNum}/3</span>
+                <span className="ml-auto text-xs text-gray-400">{stepNum}/{STEPS.length}</span>
               </div>
             );
           })}
         </div>
 
         <p className="text-xs text-gray-400 text-center">
-          Claude AI + Google Ads API を使用中。通常30〜60秒かかります。
+          Claude AI + Google Ads API + vidIQ を使用中。通常30〜60秒かかります。
         </p>
       </div>
     </div>

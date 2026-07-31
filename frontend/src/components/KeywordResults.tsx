@@ -65,6 +65,24 @@ function KeywordCard({ kw, type }: { kw: KeywordAnalysis; type: 'target' | 'skip
             CI: {kw.metrics.competitionIndex}
           </span>
         )}
+        {kw.metrics?.vidiq?.score != null && (
+          <span
+            className={`text-xs px-2 py-1 rounded-full font-medium ${
+              kw.metrics.vidiq.score >= 60
+                ? 'bg-emerald-100 text-emerald-700'
+                : kw.metrics.vidiq.score >= 30
+                ? 'bg-yellow-100 text-yellow-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            vidIQ: {Math.round(kw.metrics.vidiq.score)}
+          </span>
+        )}
+        {kw.metrics?.vidiq?.searchVolume != null && (
+          <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full">
+            YT検索: {formatVolume(kw.metrics.vidiq.searchVolume)}
+          </span>
+        )}
       </div>
 
       {kw.intent && (
@@ -81,7 +99,7 @@ function KeywordCard({ kw, type }: { kw: KeywordAnalysis; type: 'target' | 'skip
 function exportCSV(result: AnalysisResult) {
   const BOM = '\uFEFF';
   const rows: string[] = [
-    '分類,優先度,キーワード,月間検索ボリューム,競合度,競合度指数,ユーザー意図,理由',
+    '分類,優先度,キーワード,月間検索ボリューム,競合度,競合度指数,vidIQスコア,vidIQ検索ボリューム,ユーザー意図,理由',
   ];
 
   const toCSVField = (v: string | number | undefined | null) => {
@@ -98,6 +116,8 @@ function exportCSV(result: AnalysisResult) {
         kw.metrics?.avgMonthlySearches ?? 0,
         kw.metrics?.competition ?? 'UNKNOWN',
         kw.metrics?.competitionIndex ?? 0,
+        kw.metrics?.vidiq?.score ?? '',
+        kw.metrics?.vidiq?.searchVolume ?? '',
         kw.intent ?? '',
         kw.reason,
       ]
@@ -115,6 +135,8 @@ function exportCSV(result: AnalysisResult) {
         kw.metrics?.avgMonthlySearches ?? 0,
         kw.metrics?.competition ?? 'UNKNOWN',
         kw.metrics?.competitionIndex ?? 0,
+        kw.metrics?.vidiq?.score ?? '',
+        kw.metrics?.vidiq?.searchVolume ?? '',
         '',
         kw.reason,
       ]

@@ -49,7 +49,8 @@ JSONの配列形式のみで回答してください（説明文不要）：
 
 export async function analyzeKeywords(
   theme: string,
-  keywordsWithMetrics: KeywordMetrics[]
+  keywordsWithMetrics: KeywordMetrics[],
+  vidiqContext?: string
 ): Promise<AnalysisResult> {
   const metricsJson = JSON.stringify(
     keywordsWithMetrics.map((k) => ({
@@ -57,10 +58,26 @@ export async function analyzeKeywords(
       monthlySearches: k.avgMonthlySearches,
       competition: k.competition,
       competitionIndex: k.competitionIndex,
+      ...(k.vidiq && {
+        vidiq: {
+          searchVolume: k.vidiq.searchVolume,
+          competition: k.vidiq.competition,
+          score: k.vidiq.score,
+        },
+      }),
     })),
     null,
     2
   );
+
+  const vidiqSection = vidiqContext
+    ? `
+
+## vidIQデータ（YouTube固有の検索ボリューム・競合度・キーワードスコア）
+以下はvidIQから取得したYouTube固有のキーワードリサーチデータです。Google Adsのデータは一般検索向けのため、YouTube動画のキーワード選定ではこちらを優先的に参考にしてください。vidIQのスコア（0〜100）が高いほど「検索需要が高く競合が少ない」狙い目のキーワードです。
+
+${vidiqContext}`
+    : '';
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -71,13 +88,13 @@ export async function analyzeKeywords(
         content: `YouTubeチャンネルのテーマ「${theme}」について、以下のキーワードデータを分析してください。
 
 ## キーワードデータ（月間検索ボリューム・競合度付き）
-${metricsJson}
+${metricsJson}${vidiqSection}
 
 ## 分析基準
 
 ### 狙うべきワード（target）
 - 月間検索ボリューム100以上（UNKNOWNは慎重に判断）
-- 競合度がLOW〜MEDIUMで参入余地がある
+- 競合度がLOW〜MEDIUMで参入余地がある${vidiqContext ? '\n- vidIQデータがある場合はYouTube固有の検索需要・競合状況を優先して判断する' : ''}
 - YouTubeで動画として価値のあるユーザー意図（ハウツー、解説、比較など）
 - チャンネルのテーマと直接的な関連性がある
 

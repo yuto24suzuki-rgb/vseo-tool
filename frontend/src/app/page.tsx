@@ -86,7 +86,7 @@ export default function Home() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">YouTube VSEOキーワードツール</h1>
             <p className="text-xs text-gray-500">
-              AI × Google Ads で「勝てるキーワード」を自動提案
+              AI × Google Ads × vidIQ で「勝てるキーワード」を自動提案
             </p>
           </div>
         </div>
@@ -133,8 +133,8 @@ export default function Home() {
               },
               {
                 icon: '📊',
-                title: 'Google Ads API',
-                desc: '月間検索ボリューム・競合度をリアルタイム取得',
+                title: 'Google Ads + vidIQ',
+                desc: '検索ボリューム・競合度・YouTube固有データを取得',
               },
               {
                 icon: '🎯',

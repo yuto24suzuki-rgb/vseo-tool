@@ -1,3 +1,10 @@
+export interface VidiqKeywordStat {
+  keyword: string;
+  searchVolume?: number;
+  competition?: number;
+  score?: number;
+}
+
 export interface KeywordMetrics {
   keyword: string;
   avgMonthlySearches: number;
@@ -5,6 +12,7 @@ export interface KeywordMetrics {
   competitionIndex: number;
   lowTopOfPageBidMicros?: number;
   highTopOfPageBidMicros?: number;
+  vidiq?: VidiqKeywordStat;
 }
 
 export interface KeywordAnalysis {

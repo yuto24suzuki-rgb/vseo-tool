@@ -30,6 +30,9 @@ app.listen(PORT, () => {
   if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
     console.warn('WARNING: Google Ads API not configured — metrics will show as UNKNOWN');
   }
+  if (!process.env.VIDIQ_API_KEY) {
+    console.warn('WARNING: VIDIQ_API_KEY is not set — vidIQ enrichment will be skipped');
+  }
 });
 
 export default app;
