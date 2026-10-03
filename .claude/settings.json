@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Asana",
+      "mcp__Slack",
+      "mcp__tldv",
+      "mcp__Google_Drive",
+      "mcp__Google_Calendar",
+      "mcp__Gmail",
+      "mcp__Claude_Code_Remote"
+    ]
+  }
+}
